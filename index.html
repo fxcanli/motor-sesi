@@ -56,11 +56,21 @@ h2{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);
 .own input[type=number]{background:#0f1317;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px;width:100px;font-size:15px}
 .note{color:var(--mut);font-size:12.5px;line-height:1.55;margin-top:24px}
 .hide{display:none!important}
+.sensor{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:12px}
+.gm{position:relative;height:14px;background:#222a33;border-radius:7px;overflow:hidden}
+.gmc{position:absolute;left:50%;top:0;bottom:0;width:2px;margin-left:-1px;background:#4a5562}
+.gmf{position:absolute;top:0;bottom:0;left:50%;width:0;background:var(--acc)}
+.gmf.neg{background:var(--red)}
+.srow{display:flex;justify-content:space-between;gap:10px;color:var(--mut);font-size:13px;margin-top:8px;font-variant-numeric:tabular-nums}
+.srow b{color:var(--txt);font-weight:600}
+.cal{width:100%;margin-top:10px;padding:13px;border-radius:12px;border:1px solid var(--line);background:#1d242c;color:var(--txt);font-size:15px;font-weight:700;cursor:pointer}
+.cal.on{background:var(--amb);color:#2a1a00}
+.hint{color:var(--mut);font-size:12.5px;line-height:1.5;margin-top:8px}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Motor Sesi <small>· elektrikli araç için</small></h1>
+  <h1>Motor Sesi <small>· elektrikli araç için · v2</small></h1>
 
   <div class="dash" id="dash">
     <div class="top">
@@ -87,6 +97,13 @@ h2{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);
   </div>
 
   <div class="status" id="status"></div>
+
+  <div class="sensor" id="sensor">
+    <div class="gm"><div class="gmc"></div><div class="gmf" id="gmf"></div></div>
+    <div class="srow"><span id="sstat">Sensör: Başlat ile açılır</span><b id="gval">0.00 g</b></div>
+    <button class="cal" id="cal">Yönü ayarla</button>
+    <div class="hint">Telefonu tutucuya sabitle. Düz yolda “Yönü ayarla”ya bas, sonra 2–3 saniye seri hızlan. Ayarlamazsan uygulama birkaç hızlanma ve frenden sonra yönü kendisi öğrenir. Telefonun yerini değiştirirsen yeniden ayarla.</div>
+  </div>
 
   <div class="row"><label>Ses seviyesi</label><input type="range" id="vol" min="0" max="100" value="80"><output id="volv">80</output></div>
   <div class="row" id="sensrow"><label>Gaz tepkisi</label><input type="range" id="sens" min="50" max="250" value="100"><output id="sensv">1.0</output></div>
@@ -417,7 +434,8 @@ function onPos(p){
     const dt = Math.max(0.2, t - gps.last.t);
     const a = Math.max(-10, Math.min(10, (sp - gps.last.sp) / dt));
     gps.acc = gps.acc * 0.4 + a * 0.6;
-  }
+    motionOnFix(sp, a);
+  } else motionOnFix(sp, 0);
   pt.sp = sp; gps.last = pt; gps.sp = sp; gps.fixTime = performance.now() / 1000; gps.ok = true;
   setStatus('GPS bağlı · doğruluk ±' + Math.round(p.coords.accuracy || 0) + ' m');
 }
@@ -434,6 +452,114 @@ function gpsSpeed(now){
   pred = Math.max(0, pred);
   gps.vS += (pred - gps.vS) * 0.15;
   return gps.vS;
+}
+
+/* ================= İVME SENSÖRÜ ================= */
+const mo = { on:false, perm:'', last:0, g:[0,0,0], gInit:false, ah:[0,0,0], f:null, fSrc:'', gRef:null,
+  aL:0, v:0, vInit:false, vHist:[], cal:false, calStart:0, calUntil:0, calSum:[0,0,0], calN:0,
+  winSum:[0,0,0], winN:0, learn:[0,0,0], learnN:0, hz:0, cnt:0, cntT:0 };
+const V = {
+  dot:(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2], len:a=>Math.hypot(a[0],a[1],a[2]),
+  sc:(a,s)=>[a[0]*s,a[1]*s,a[2]*s], sub:(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],
+  norm:a=>{ const l=Math.hypot(a[0],a[1],a[2])||1; return [a[0]/l,a[1]/l,a[2]/l]; }
+};
+const horiz = (a, gh) => V.sub(a, V.sc(gh, V.dot(a, gh)));
+(function loadCal(){ try { const c = JSON.parse(localStorage.getItem('ms_cal') || 'null'); if (c && c.f && c.g){ mo.f = c.f; mo.gRef = c.g; mo.fSrc = 'kayıtlı'; } } catch(e){} })();
+function saveCal(){ try { localStorage.setItem('ms_cal', JSON.stringify({ f: mo.f, g: mo.gRef })); } catch(e){} }
+
+function requestMotion(){
+  if (typeof DeviceMotionEvent === 'undefined'){ mo.perm = 'yok'; return Promise.resolve(false); }
+  const attach = () => { if (!mo.on){ window.addEventListener('devicemotion', onMotion); mo.on = true; mo.cntT = performance.now()/1000; } mo.perm = 'ok'; return true; };
+  if (typeof DeviceMotionEvent.requestPermission === 'function'){
+    return DeviceMotionEvent.requestPermission().then(r => { if (r === 'granted') return attach(); mo.perm = 'red'; return false; })
+      .catch(() => { mo.perm = 'red'; return false; });
+  }
+  return Promise.resolve(attach());
+}
+
+function onMotion(e){
+  const now = performance.now() / 1000;
+  const dt = mo.last ? Math.min(0.1, Math.max(0.001, now - mo.last)) : 0.016; mo.last = now;
+  mo.cnt++; if (now - mo.cntT >= 1){ mo.hz = mo.cnt / (now - mo.cntT); mo.cnt = 0; mo.cntT = now; }
+  const ig = e.accelerationIncludingGravity, la = e.acceleration;
+  if (!ig || ig.x == null) return;
+  const igv = [ig.x || 0, ig.y || 0, ig.z || 0];
+  const hasLa = la && la.x != null;
+  const laV = hasLa ? [la.x || 0, la.y || 0, la.z || 0] : null;
+  if (!mo.gInit){ mo.g = igv.slice(); mo.gInit = true; }
+  // yerçekimi yönü: sadece araç belirgin ivmelenmiyorken güncellenir
+  const calm = hasLa ? V.len(laV) < 0.8 : Math.abs(V.len(igv) - 9.81) < 0.6;
+  if (calm){ const kg = 1 - Math.exp(-dt / 2.5); for (let i = 0; i < 3; i++) mo.g[i] += (igv[i] - mo.g[i]) * kg; }
+  const gh = V.norm(mo.g);
+  const lin = hasLa ? laV : V.sub(igv, mo.g);
+  const ah = horiz(lin, gh);
+  const ka = 1 - Math.exp(-dt / 0.12);
+  for (let i = 0; i < 3; i++){ mo.ah[i] += (ah[i] - mo.ah[i]) * ka; mo.winSum[i] += mo.ah[i]; }
+  mo.winN++;
+
+  // kalibrasyon: ilk belirgin hızlanmadan sonraki 2.5 sn
+  if (mo.cal){
+    if (V.len(mo.ah) > 0.7){
+      if (!mo.calStart) mo.calStart = now;
+      if (now - mo.calStart < 2.5){ for (let i = 0; i < 3; i++) mo.calSum[i] += mo.ah[i]; mo.calN++; }
+    }
+    if ((mo.calStart && now - mo.calStart >= 2.5) || now > mo.calUntil) finishCal(gh);
+  }
+  // telefon yer değiştirdiyse yön geçersiz
+  if (mo.f && mo.gRef && V.dot(gh, V.norm(mo.gRef)) < Math.cos(30 * Math.PI / 180)) mo.moved = (mo.moved || 0) + dt; else mo.moved = 0;
+  if (mo.moved > 3){
+    mo.moved = 0; mo.f = null; mo.fSrc = ''; mo.learn = [0,0,0]; mo.learnN = 0; mo.vInit = false; saveCal();
+  }
+  if (!mo.f) return;
+  const f = V.norm(horiz(mo.f, gh));
+  mo.aL = V.dot(mo.ah, f);
+  if (mo.vInit) mo.v = Math.max(0, mo.v + mo.aL * dt);
+}
+
+function startCal(){
+  if (!mo.on){ requestMotion().then(ok => { if (ok) startCal(); else setStatus('Hareket sensörüne izin verilmedi.', true); }); return; }
+  mo.cal = true; mo.calStart = 0; mo.calUntil = performance.now() / 1000 + 20; mo.calSum = [0,0,0]; mo.calN = 0;
+  $('cal').classList.add('on'); $('cal').textContent = 'Şimdi seri hızlan…';
+}
+function finishCal(gh){
+  mo.cal = false; $('cal').classList.remove('on'); $('cal').textContent = 'Yönü ayarla';
+  if (mo.calN < 15){ setStatus('Hızlanma algılanmadı. Tekrar dene, gaza biraz daha sert bas.', true); return; }
+  mo.f = V.norm(horiz(mo.calSum, gh)); mo.gRef = mo.g.slice(); mo.fSrc = 'ayarlandı';
+  mo.learn = [0,0,0]; mo.learnN = 0; saveCal();
+  if (gps.ok && !mo.vInit){ mo.v = gps.sp; mo.vInit = true; }
+  setStatus('Yön ayarlandı, sensör aktif.');
+}
+
+// GPS ölçümü geldiğinde: yönü öğren + sensör hızını düzelt
+function motionOnFix(sp, a){
+  if (!mo.on) return;
+  const now = performance.now() / 1000;
+  if (mo.winN > 5){
+    const avg = V.sc(mo.winSum, 1 / mo.winN);
+    if (Math.abs(a) > 0.6 && sp > 3){
+      for (let i = 0; i < 3; i++) mo.learn[i] += avg[i] * a;
+      mo.learnN++;
+      const gh = V.norm(mo.g), fa = V.norm(horiz(mo.learn, gh));
+      if (!mo.f && mo.learnN >= 4){ mo.f = fa; mo.gRef = mo.g.slice(); mo.fSrc = 'otomatik'; saveCal(); }
+      else if (mo.f && mo.learnN >= 6 && V.dot(fa, mo.f) < 0){ mo.f = fa; mo.gRef = mo.g.slice(); mo.fSrc = 'otomatik düzeltildi'; saveCal(); }
+    }
+  }
+  mo.winSum = [0,0,0]; mo.winN = 0;
+  if (!mo.f) return;
+  if (!mo.vInit){ mo.v = sp; mo.vInit = true; return; }
+  // GPS hızı ~0.6 sn geriden gelir: o anki sensör hızıyla karşılaştır
+  let vPast = mo.v;
+  for (let i = mo.vHist.length - 1; i >= 0; i--){ if (mo.vHist[i][0] <= now - 0.6){ vPast = mo.vHist[i][1]; break; } }
+  mo.v = Math.max(0, mo.v + (sp - vPast) * 0.4);
+  if (sp === 0 && Math.abs(mo.aL) < 0.3) mo.v = 0;
+}
+
+function sensorText(){
+  if (!mo.on) return mo.perm === 'red' ? 'Sensör izni verilmedi' : mo.perm === 'yok' ? 'Bu cihazda sensör yok' : 'Sensör: Başlat ile açılır';
+  if (performance.now() / 1000 - mo.cntT > 2.5 && mo.hz < 5) return 'Sensörden veri gelmiyor';
+  if (mo.cal) return mo.calStart ? 'Ölçülüyor…' : 'Bekliyor: seri hızlan';
+  if (!mo.f) return 'Yön öğreniliyor (' + Math.min(mo.learnN, 4) + '/4)';
+  return 'Sensör aktif · yön ' + mo.fSrc + ' · ' + Math.round(mo.hz) + ' Hz';
 }
 
 /* ================= ANA DÖNGÜ ================= */
@@ -458,8 +584,13 @@ function tick(){
     vK = demo.v * 3.6;
     loadT = st.gas ? 1 : (vK < 2 ? 0.05 : 0);
   } else {
-    vK = gpsSpeed(now) * 3.6;
-    const acc = gps.acc;
+    const gpsV = gpsSpeed(now);
+    const sensOk = mo.on && mo.f && mo.vInit && gps.ok && (now - gps.fixTime) < 4;
+    let acc;
+    if (sensOk){ vK = mo.v * 3.6; acc = mo.aL; if (gps.sp === 0 && vK < 2) vK = 0; }
+    else { vK = gpsV * 3.6; acc = gps.acc; }
+    mo.vHist.push([now, mo.v]); while (mo.vHist.length && mo.vHist[0][0] < now - 2) mo.vHist.shift();
+    st.acc = acc;
     if (acc < -0.4 && vK > 5) loadT = 0;
     else loadT = Math.min(1, 0.08 + vK / 250 * 0.25 + Math.max(0, acc) * st.sens / 3.2);
   }
@@ -494,6 +625,12 @@ function tick(){
   }
 
   // ekran
+  if (mode === 'gps'){
+    const ga = (st.acc || 0) / 9.81, w = Math.min(1, Math.abs(st.acc || 0) / 5) * 50;
+    const gm = $('gmf'); gm.style.width = w + '%'; gm.style.left = (st.acc >= 0 ? 50 : 50 - w) + '%'; gm.classList.toggle('neg', st.acc < 0);
+    $('gval').textContent = Math.abs(ga) < 0.005 ? '0.00 g' : (ga > 0 ? '+' : '') + ga.toFixed(2) + ' g';
+    $('sstat').textContent = sensorText();
+  }
   $('spd').textContent = Math.round(vK);
   $('gear').textContent = p.mode === 'electric' ? 'E' : String(gb.gear + 1);
   $('rpm').textContent = Math.round(gb.rpm / 10) * 10 + ' d/dk';
@@ -526,7 +663,8 @@ function setMode(m){
   [...$('modes').children].forEach(b => b.classList.toggle('sel', b.dataset.m === m));
   $('pad').classList.toggle('hide', m !== 'demo');
   $('sensrow').classList.toggle('hide', m !== 'gps');
-  if (m === 'gps'){ if (st.running) startGps(); else setStatus('Başlat’a basınca GPS açılır.'); }
+  $('sensor').classList.toggle('hide', m !== 'gps');
+  if (m === 'gps'){ if (st.running){ startGps(); requestMotion(); } else setStatus('Başlat’a basınca GPS ve hareket sensörü açılır.'); }
   else { stopGps(); setStatus('GAZ butonuna basılı tut, bırakınca araç yavaşlar.'); }
   st.gear = 0;
 }
@@ -540,6 +678,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 $('start').onclick = async () => {
   const b = $('start');
   if (!st.running){
+    if (mode === 'gps') requestMotion(); // iOS: izin isteği dokunuşla aynı anda başlamalı
     try {
       if (!ctx) await initAudio(); else await ctx.resume();
     } catch(e){ setStatus('Ses başlatılamadı: ' + e.message, true); return; }
@@ -562,6 +701,7 @@ function hold(el, key){
   el.addEventListener('pointerleave', off); el.addEventListener('pointercancel', off);
   el.addEventListener('contextmenu', e => e.preventDefault());
 }
+$('cal').onclick = startCal;
 hold($('gas'), 'gas'); hold($('brk'), 'brake');
 
 $('vol').value = Math.round(st.vol * 100); $('volv').textContent = $('vol').value;
