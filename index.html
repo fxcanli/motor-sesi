@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0b0d10">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>Motor Sesi</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<style>
+:root{--bg:#0b0d10;--card:#151a20;--line:#252c35;--txt:#e8edf2;--mut:#8a96a3;--acc:#19d3c5;--red:#ff3b3b;--amb:#ffb020}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--txt);font-family:-apple-system,system-ui,"Segoe UI",Roboto,sans-serif;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+.wrap{max-width:520px;margin:0 auto;padding:14px 14px 40px}
+h1{font-size:17px;margin:4px 2px 12px;font-weight:700;letter-spacing:.02em}
+h1 small{color:var(--mut);font-weight:500}
+.dash{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;transition:border-color .1s}
+.dash.shift{border-color:var(--red)}
+.top{display:flex;justify-content:space-between;align-items:flex-end}
+.speed{font-size:84px;font-weight:700;line-height:.9;font-variant-numeric:tabular-nums}
+.unit{color:var(--mut);font-size:14px;margin-top:6px}
+.gear{width:66px;height:66px;border-radius:14px;border:2px solid var(--line);display:grid;place-items:center;font-size:38px;font-weight:700}
+.tach{display:flex;gap:2px;height:26px;margin-top:16px}
+.tach i{flex:1;background:#222a33;border-radius:2px}
+.tach i.on{background:var(--acc)}
+.tach i.on.a{background:var(--amb)}
+.tach i.on.r{background:var(--red)}
+.meta{display:flex;justify-content:space-between;color:var(--mut);font-size:13px;margin-top:8px;font-variant-numeric:tabular-nums}
+.start{width:100%;padding:18px;border-radius:14px;border:0;background:var(--acc);color:#04201d;font-size:18px;font-weight:800;margin-top:12px;cursor:pointer}
+.start.on{background:#2a1214;color:#ff6b6b;box-shadow:inset 0 0 0 1px #5a2328}
+.seg{display:flex;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px;margin-top:12px}
+.seg button{flex:1;border:0;background:transparent;color:var(--mut);padding:11px;border-radius:9px;font-size:15px;font-weight:600;cursor:pointer}
+.seg button.sel{background:#232b35;color:var(--txt)}
+.pad{display:grid;grid-template-columns:1fr 1.6fr;gap:10px;margin-top:12px}
+.pad button{height:120px;border-radius:16px;border:1px solid var(--line);font-size:22px;font-weight:800;color:var(--txt);background:#1a2027;touch-action:none;cursor:pointer}
+.pad .gas.down{background:var(--acc);color:#04201d}
+.pad .brk.down{background:var(--red)}
+.row{display:flex;align-items:center;gap:12px;margin-top:14px;color:var(--mut);font-size:14px}
+.row label{min-width:92px}
+.row input[type=range]{flex:1;accent-color:var(--acc)}
+.row output{min-width:38px;text-align:right;color:var(--txt);font-variant-numeric:tabular-nums}
+h2{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin:24px 2px 10px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.eng{text-align:left;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;color:var(--txt);cursor:pointer;font:inherit}
+.eng b{display:block;font-size:15px}
+.eng span{display:block;font-size:12px;color:var(--mut);margin-top:3px}
+.eng.sel{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
+.status{margin-top:10px;font-size:13px;color:var(--mut);min-height:18px;line-height:1.45}
+.status.err{color:#ff8a8a}
+.own{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:10px;display:none;font-size:14px;color:var(--mut);line-height:1.5}
+.own.show{display:block}
+.own input[type=file]{color:var(--txt);margin:8px 0;max-width:100%}
+.own input[type=number]{background:#0f1317;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px;width:100px;font-size:15px}
+.note{color:var(--mut);font-size:12.5px;line-height:1.55;margin-top:24px}
+.hide{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Motor Sesi <small>· elektrikli araç için</small></h1>
+
+  <div class="dash" id="dash">
+    <div class="top">
+      <div>
+        <div class="speed" id="spd">0</div>
+        <div class="unit">km/sa</div>
+      </div>
+      <div class="gear" id="gear">1</div>
+    </div>
+    <div class="tach" id="tach"></div>
+    <div class="meta"><span id="rpm">0 d/dk</span><span id="eng-name">—</span></div>
+  </div>
+
+  <button class="start" id="start">SESİ BAŞLAT</button>
+
+  <div class="seg" id="modes">
+    <button data-m="gps">GPS (sürüş)</button>
+    <button data-m="demo">Demo (gaz butonu)</button>
+  </div>
+
+  <div class="pad" id="pad">
+    <button class="brk" id="brk">FREN</button>
+    <button class="gas" id="gas">GAZ</button>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <div class="row"><label>Ses seviyesi</label><input type="range" id="vol" min="0" max="100" value="80"><output id="volv">80</output></div>
+  <div class="row" id="sensrow"><label>Gaz tepkisi</label><input type="range" id="sens" min="50" max="250" value="100"><output id="sensv">1.0</output></div>
+
+  <h2>Motor seç</h2>
+  <div class="grid" id="grid"></div>
+
+  <div class="own" id="own">
+    Kendi bulduğun bir motor sesi kaydını yükle (mp3, m4a, wav). Kayıt sabit devirde, tekrar edebilen bir parça olursa en iyi sonucu verir. Uygulama sesi hıza göre hızlandırıp yavaşlatır.
+    <br><input type="file" id="file" accept="audio/*">
+    <br>Kaydın devri (yaklaşık): <input type="number" id="baserpm" value="3000" min="500" max="15000" step="100"> d/dk
+    <div id="ownstat" style="margin-top:6px"></div>
+  </div>
+
+  <div class="note">
+    Telefonu araca Bluetooth ya da CarPlay ile bağla, sesi araç hoparlöründen ver. Sürüş sırasında ekran açık kalmalı (uygulama ekranı kapanmasın diye istek gönderir). GPS hızı saniyede bir güncellenir; uygulama aradaki hızı tahmin ederek gecikmeyi azaltır. Vitesler sanaldır: EQS tek vitesli olduğu için uygulama hızdan sahte bir vites ve devir üretir.
+  </div>
+</div>
+
+<script>
+/* ================= SES ÜRETİCİ (AudioWorklet ve yedek mod ortak) ================= */
+class EngineSynth {
+  constructor(sr){
+    this.sr = sr; this.angle = 0;
+    this.rpm = 800; this.rpmT = 800; this.load = 0; this.loadT = 0;
+    this.cut = false; this.overrun = false; this.preset = null;
+    this.pPos = new Float32Array(96); this.pLen = new Float32Array(96);
+    this.pAmp = new Float32Array(96); this.pNoise = new Float32Array(96); this.pCount = 0;
+    this.ph = [0,0,0,0]; this.lfo = 0; this.lpz = 0;
+  }
+  setPreset(p){
+    this.preset = p; this.mode = p.mode || 'piston';
+    this.cyl = Math.max(1, p.cyl || 8);
+    const base = 720 / this.cyl; this.angles = [];
+    for (let i = 0; i < this.cyl; i++){
+      let a = i * base + ((p.offsets && p.offsets[i]) || 0);
+      a = ((a % 720) + 720) % 720; this.angles.push(a);
+    }
+    this.amps = (p.amps && p.amps.length === this.cyl) ? p.amps : new Array(this.cyl).fill(1);
+    this.pulseMs = p.pulseMs || 3; this.noise = (p.noise == null) ? 0.3 : p.noise;
+    this.crackle = p.crackle || 0; this.redline = p.redline || 7000; this.pCount = 0;
+  }
+  setParams(o){
+    if (o.rpm !== undefined) this.rpmT = o.rpm;
+    if (o.load !== undefined) this.loadT = o.load;
+    if (o.cut !== undefined) this.cut = o.cut;
+    if (o.overrun !== undefined) this.overrun = o.overrun;
+  }
+  add(len, amp, noise, delay){
+    if (this.pCount >= 96) return;
+    const k = this.pCount++;
+    this.pPos[k] = -delay; this.pLen[k] = len; this.pAmp[k] = amp; this.pNoise[k] = noise;
+  }
+  pop(){
+    const sr = this.sr;
+    this.add(sr * (0.002 + Math.random() * 0.006), 1.0 + Math.random() * 1.4, 1.6, Math.floor(Math.random() * sr * 0.012));
+  }
+  fire(i, rpm){
+    const interval = 120 / (Math.max(rpm, 300) * this.cyl);
+    const lenS = Math.max(8, Math.min(this.pulseMs / 1000, interval * 0.9) * this.sr);
+    if (this.cut){ if (Math.random() < this.crackle * 0.35) this.pop(); return; }
+    const ld = this.load;
+    const amp = this.amps[i] * (0.3 + 0.7 * ld) * (0.88 + 0.24 * Math.random());
+    this.add(lenS, amp, this.noise * (0.4 + 0.6 * ld), 0);
+    if (this.overrun && Math.random() < this.crackle * 0.05) this.pop();
+  }
+  render(out, n){
+    if (!this.preset){ for (let j = 0; j < n; j++) out[j] = 0; return; }
+    const sr = this.sr, T = 6.283185307179586;
+    for (let j = 0; j < n; j++){
+      this.rpm += (this.rpmT - this.rpm) * 0.0012;
+      this.load += (this.loadT - this.load) * 0.0008;
+      const rpm = this.rpm; let s = 0;
+      if (this.mode === 'electric'){
+        const f = 40 + rpm * 0.06;
+        this.lfo += 5.5 / sr; if (this.lfo > 1) this.lfo -= 1;
+        this.ph[0] += f / sr; this.ph[1] += f * 1.503 / sr; this.ph[2] += f * 4.01 / sr; this.ph[3] += f * 0.5 / sr;
+        for (let k = 0; k < 4; k++) if (this.ph[k] >= 1) this.ph[k] -= 1;
+        s = (0.35 * Math.sin(T * this.ph[0]) + 0.2 * (2 * this.ph[1] - 1) + 0.12 * Math.sin(T * this.ph[2]) + 0.25 * Math.sin(T * this.ph[3]))
+            * (0.25 + 0.75 * this.load) * (0.85 + 0.15 * Math.sin(T * this.lfo));
+        s += (Math.random() * 2 - 1) * 0.03 * this.load;
+      } else {
+        const dA = rpm / 60 * 360 / sr;
+        const prev = this.angle; let a = prev + dA, wrapped = false;
+        if (a >= 720){ a -= 720; wrapped = true; }
+        this.angle = a;
+        for (let i = 0; i < this.cyl; i++){
+          const ang = this.angles[i];
+          const crossed = wrapped ? (ang > prev || ang <= a) : (ang > prev && ang <= a);
+          if (crossed) this.fire(i, rpm);
+        }
+        for (let k = 0; k < this.pCount; ){
+          const pos = this.pPos[k]; this.pPos[k] = pos + 1;
+          if (pos >= 0){
+            const x = pos / this.pLen[k];
+            if (x >= 1){
+              const last = --this.pCount;
+              this.pPos[k] = this.pPos[last]; this.pLen[k] = this.pLen[last];
+              this.pAmp[k] = this.pAmp[last]; this.pNoise[k] = this.pNoise[last];
+              continue;
+            }
+            const sh = Math.sin(3.141592653589793 * x) * Math.exp(-2.5 * x);
+            const nz = (Math.random() * 2 - 1) * this.pNoise[k] * Math.exp(-4 * x);
+            s += this.pAmp[k] * (sh + nz);
+          }
+          k++;
+        }
+        s += (Math.random() * 2 - 1) * this.noise * 0.04 * (0.3 + this.load) * (rpm / this.redline);
+      }
+      // hafif yumuşatma (dijital sertliği alır)
+      this.lpz += (s - this.lpz) * 0.6;
+      out[j] = this.lpz * 0.5;
+    }
+  }
+}
+
+/* ================= MOTORLAR ================= */
+const PRESETS = [
+  {id:'amg', name:'AMG V8 Biturbo', sub:'Mercedes-AMG 63 tarzı', cyl:8, offsets:[0,-12,8,-6,0,10,-10,6], amps:[1,.78,.92,.7,.98,.75,.88,.72],
+   idle:750, redline:7000, pulseMs:4.5, noise:.35, drive:2.2, f:[[90,9],[320,5],[1400,3]], lp:[900,3500,1500], crackle:.8, turbo:.5, gain:1.0,
+   gears:[50,80,115,150,185,220,255,290,315]},
+  {id:'muscle', name:'Amerikan V8', sub:'Mustang / Camaro tarzı', cyl:8, offsets:[0,-20,15,-12,5,18,-15,10], amps:[1,.6,.95,.55,.9,.62,1,.58],
+   idle:700, redline:6800, pulseMs:6, noise:.3, drive:2.6, f:[[75,10],[260,6],[1100,2]], lp:[700,3000,1400], crackle:.4, turbo:0, gain:1.0,
+   gears:[70,110,150,190,230,270]},
+  {id:'v12', name:'İtalyan V12', sub:'Ferrari tarzı', cyl:12, amps:[1,.95,.98,.93,1,.96,.97,.94,1,.95,.99,.93],
+   idle:1000, redline:9200, pulseMs:2.2, noise:.25, drive:1.6, f:[[180,6],[650,7],[2400,5]], lp:[1800,7000,1500], crackle:.3, turbo:0, gain:.9,
+   gears:[70,110,150,195,240,290,340]},
+  {id:'v10', name:'V10 Süper Spor', sub:'Lamborghini Huracán tarzı', cyl:10, amps:[1,.9,.97,.88,1,.92,.95,.9,.98,.89],
+   idle:1000, redline:8700, pulseMs:2.8, noise:.4, drive:2.4, f:[[150,7],[520,6],[1900,6]], lp:[1500,6000,1800], crackle:.9, turbo:0, gain:.9,
+   gears:[65,105,145,190,235,280,325]},
+  {id:'flat6', name:'Boxer 6', sub:'Porsche 911 GT3 tarzı', cyl:6, offsets:[0,6,-4,0,5,-6], amps:[1,.85,.95,.88,1,.83],
+   idle:900, redline:9000, pulseMs:2.5, noise:.3, drive:1.8, f:[[160,5],[800,8],[3000,6]], lp:[1600,7000,1500], crackle:.3, turbo:0, gain:1.0,
+   gears:[65,100,140,180,225,270,318]},
+  {id:'i6', name:'Sıra 6 Turbo', sub:'BMW M3 / M4 tarzı', cyl:6, amps:[1,.92,.96,.9,.98,.93],
+   idle:800, redline:7200, pulseMs:3.2, noise:.3, drive:1.9, f:[[120,6],[450,6],[1600,4]], lp:[1100,4500,1500], crackle:.5, turbo:.7, gain:1.0,
+   gears:[55,90,130,170,205,240,275,300]},
+  {id:'gtr', name:'V6 Twin Turbo', sub:'Nissan GT-R tarzı', cyl:6, amps:[1,.9,.95,.88,.97,.9],
+   idle:850, redline:7100, pulseMs:3.5, noise:.3, drive:1.8, f:[[110,6],[420,5],[1500,4]], lp:[1000,4200,1500], crackle:.3, turbo:1, gain:1.0,
+   gears:[65,105,145,190,240,315]},
+  {id:'rotary', name:'Rotary Motor', sub:'Mazda RX-7 tarzı', cyl:4, amps:[1,.9,1,.9],
+   idle:900, redline:9000, pulseMs:4, noise:.5, drive:3, f:[[140,6],[600,7],[2200,5]], lp:[1400,6000,1500], crackle:.7, turbo:.4, gain:.9,
+   gears:[70,115,160,210,255]},
+  {id:'f1', name:'F1 V10', sub:'2000’ler Formula 1', cyl:10, amps:[1,.95,.98,.94,1,.96,.97,.95,.99,.94],
+   idle:4000, redline:19000, pulseMs:.9, noise:.3, drive:2.0, f:[[300,5],[1200,8],[3500,6]], lp:[3000,9000,1500], crackle:.2, turbo:0, gain:.8,
+   gears:[100,145,185,225,265,305,345]},
+  {id:'scifi', name:'Uzay Gemisi', sub:'Bilim kurgu, elektrikli', mode:'electric', cyl:1,
+   idle:300, redline:12000, noise:.1, drive:1.4, f:[[120,4],[600,3],[2500,2]], lp:[1200,5000,2500], crackle:0, turbo:0, gain:.8,
+   gears:[260]},
+  {id:'own', name:'Kendi Sesin', sub:'Ses dosyası yükle', mode:'sample',
+   idle:800, redline:7000, drive:1, f:[[100,0],[500,0],[2000,0]], lp:[18000,0,0], crackle:0, turbo:0, gain:1,
+   gears:[60,100,140,180,220,260,300]},
+];
+
+/* ================= DURUM ================= */
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d){ try { const v = localStorage.getItem('ms_' + k); return v == null ? d : v; } catch(e){ return d; } },
+  set(k, v){ try { localStorage.setItem('ms_' + k, v); } catch(e){} }
+};
+let cur = PRESETS.find(p => p.id === store.get('eng', 'amg')) || PRESETS[0];
+let mode = store.get('mode', 'demo');
+const st = { running:false, gas:false, brake:false, load:0, gear:0, lastShift:0, cutUntil:0, boost:0, bovCool:0,
+             sens: Number(store.get('sens', 100)) / 100, vol: Number(store.get('vol', 80)) / 100, vDisp:0 };
+const demo = { v:0 };
+const gps = { sp:0, acc:0, fixTime:0, last:null, watch:null, ok:false, vS:0 };
+
+let ctx = null, synthNode = null, useWorklet = false, fb = null;
+let preGain, shaper, hp, eq = [], lp, comp, master, turboOsc, turboGain, noiseBuf, sampleGain, sampleSrc = null;
+let ownBuffer = null, ownRaw = null, wakeLock = null;
+
+/* ================= SES ZİNCİRİ ================= */
+function makeCurve(k){
+  const n = 2048, c = new Float32Array(n), t = Math.tanh(k);
+  for (let i = 0; i < n; i++){ const x = i / (n - 1) * 2 - 1; c[i] = Math.tanh(k * x) / t; }
+  return c;
+}
+
+async function initAudio(){
+  const AC = window.AudioContext || window.webkitAudioContext;
+  ctx = new AC({ latencyHint: 'interactive' });
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch(e){}
+  ctx.resume();
+
+  const src = EngineSynth.toString() + `
+class EP extends AudioWorkletProcessor {
+  constructor(){ super(); this.s = new EngineSynth(sampleRate);
+    this.port.onmessage = e => { const d = e.data; if (d.preset) this.s.setPreset(d.preset); if (d.params) this.s.setParams(d.params); }; }
+  process(inputs, outputs){ const ch = outputs[0]; this.s.render(ch[0], ch[0].length); for (let c = 1; c < ch.length; c++) ch[c].set(ch[0]); return true; }
+}
+registerProcessor('engine-synth', EP);`;
+
+  const urls = [];
+  try { urls.push(URL.createObjectURL(new Blob([src], { type: 'application/javascript' }))); } catch(e){}
+  try { urls.push('data:application/javascript;base64,' + btoa(unescape(encodeURIComponent(src)))); } catch(e){}
+  if (ctx.audioWorklet){
+    for (const u of urls){
+      try {
+        await ctx.audioWorklet.addModule(u);
+        synthNode = new AudioWorkletNode(ctx, 'engine-synth', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1] });
+        useWorklet = true; break;
+      } catch(e){}
+    }
+  }
+  if (!useWorklet){
+    fb = new EngineSynth(ctx.sampleRate);
+    synthNode = ctx.createScriptProcessor(1024, 1, 1);
+    synthNode.onaudioprocess = ev => { const o = ev.outputBuffer.getChannelData(0); fb.render(o, o.length); };
+  }
+
+  preGain = ctx.createGain(); preGain.gain.value = 0;
+  shaper = ctx.createWaveShaper(); shaper.oversample = '2x';
+  hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 28; hp.Q.value = .7;
+  for (let i = 0; i < 3; i++){ const f = ctx.createBiquadFilter(); f.type = 'peaking'; f.Q.value = 1.2; eq.push(f); }
+  lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = .8; lp.frequency.value = 2000;
+  comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -16; comp.knee.value = 10; comp.ratio.value = 4; comp.attack.value = .003; comp.release.value = .15;
+  master = ctx.createGain(); master.gain.value = st.vol;
+
+  synthNode.connect(preGain); preGain.connect(shaper); shaper.connect(hp);
+  hp.connect(eq[0]); eq[0].connect(eq[1]); eq[1].connect(eq[2]); eq[2].connect(lp); lp.connect(comp);
+  comp.connect(master); master.connect(ctx.destination);
+
+  turboOsc = ctx.createOscillator(); turboOsc.type = 'sine'; turboOsc.frequency.value = 2000;
+  turboGain = ctx.createGain(); turboGain.gain.value = 0;
+  turboOsc.connect(turboGain); turboGain.connect(comp); turboOsc.start();
+
+  noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+  const nd = noiseBuf.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+
+  sampleGain = ctx.createGain(); sampleGain.gain.value = 0; sampleGain.connect(comp);
+
+  if (ownRaw && !ownBuffer) await decodeOwn();
+  applyPreset();
+}
+
+function sendSynth(msg){
+  if (!synthNode) return;
+  if (useWorklet) synthNode.port.postMessage(msg);
+  else { if (msg.preset) fb.setPreset(msg.preset); if (msg.params) fb.setParams(msg.params); }
+}
+
+function applyPreset(){
+  if (!ctx) return;
+  const p = cur;
+  if (p.mode !== 'sample') sendSynth({ preset: p });
+  p.f.forEach((fg, i) => { eq[i].frequency.value = fg[0]; eq[i].gain.value = fg[1]; });
+  shaper.curve = makeCurve(p.drive || 1);
+  if (p.mode === 'sample') startSample(); else stopSample();
+}
+
+function startSample(){
+  stopSample();
+  if (!ctx || !ownBuffer) return;
+  sampleSrc = ctx.createBufferSource(); sampleSrc.buffer = ownBuffer; sampleSrc.loop = true;
+  sampleSrc.connect(sampleGain); sampleSrc.start();
+}
+function stopSample(){
+  if (sampleSrc){ try { sampleSrc.stop(); } catch(e){} sampleSrc.disconnect(); sampleSrc = null; }
+  if (sampleGain) sampleGain.gain.value = 0;
+}
+
+function decodeOwn(){
+  return new Promise(res => {
+    if (!ctx || !ownRaw) return res();
+    ctx.decodeAudioData(ownRaw.slice(0), b => { ownBuffer = b; $('ownstat').textContent = 'Yüklendi: ' + b.duration.toFixed(1) + ' sn'; res(); },
+      () => { $('ownstat').textContent = 'Bu dosya açılamadı. mp3 ya da wav dene.'; res(); });
+  });
+}
+
+function blowOff(amount){
+  if (!ctx) return;
+  const s = ctx.createBufferSource(); s.buffer = noiseBuf;
+  const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2600; bp.Q.value = 1.1;
+  const g = ctx.createGain(); const t = ctx.currentTime;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.35 * amount, t + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+  bp.frequency.setValueAtTime(3200, t); bp.frequency.exponentialRampToValueAtTime(1400, t + 0.45);
+  s.connect(bp); bp.connect(g); g.connect(comp); s.start(t); s.stop(t + 0.5);
+}
+
+/* ================= SANAL VİTES KUTUSU ================= */
+function gearbox(p, vK, load, now){
+  const g = p.gears, rl = p.redline, idle = p.idle;
+  const rin = gi => vK / g[gi] * rl;
+  if (st.gear > g.length - 1) st.gear = g.length - 1;
+  if (now - st.lastShift > 0.5){
+    const up = rl * (0.38 + 0.57 * Math.pow(load, 1.3));
+    if (st.gear < g.length - 1 && rin(st.gear) > up && rin(st.gear + 1) > idle * 1.1){
+      st.gear++; st.lastShift = now; if (load > 0.5) st.cutUntil = now + 0.11;
+    } else if (st.gear > 0){
+      const down = Math.max(idle * 1.25, up * 0.5);
+      const kick = load > 0.85 && rin(st.gear - 1) < rl * 0.85 && rin(st.gear) < rl * 0.6;
+      if (rin(st.gear) < down || kick){ st.gear--; st.lastShift = now; }
+    }
+  }
+  let rpm = rin(st.gear);
+  if (st.gear === 0) rpm = Math.max(rpm, idle + load * 0.35 * rl * Math.max(0, 1 - vK / 25));
+  rpm = Math.max(rpm, idle);
+  let cut = now < st.cutUntil;
+  if (rpm >= rl * 0.995){ rpm = rl; if (Math.floor(now * 22) % 2 === 0) cut = true; }
+  rpm += Math.sin(now * 7) * 12;
+  return { rpm, gear: st.gear, cut };
+}
+
+/* ================= GPS ================= */
+function hav(a, b){
+  const R = 6371000, r = Math.PI / 180;
+  const dLa = (b.lat - a.lat) * r, dLo = (b.lon - a.lon) * r;
+  const x = Math.sin(dLa / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLo / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+function startGps(){
+  if (gps.watch != null) return;
+  if (!navigator.geolocation){ setStatus('Bu tarayıcı konum desteklemiyor. Demo modunu kullan.', true); return; }
+  setStatus('GPS bekleniyor…');
+  try {
+    gps.watch = navigator.geolocation.watchPosition(onPos, onPosErr, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+  } catch(e){ onPosErr({ code: 1 }); }
+}
+function stopGps(){ if (gps.watch != null){ try { navigator.geolocation.clearWatch(gps.watch); } catch(e){} gps.watch = null; } }
+function onPos(p){
+  const t = (p.timestamp || Date.now()) / 1000;
+  const pt = { lat: p.coords.latitude, lon: p.coords.longitude, t };
+  let sp = p.coords.speed;
+  if (sp == null || isNaN(sp) || sp < 0){ sp = gps.last ? hav(gps.last, pt) / Math.max(0.2, t - gps.last.t) : 0; }
+  if (sp < 0.8) sp = 0;
+  if (gps.last){
+    const dt = Math.max(0.2, t - gps.last.t);
+    const a = Math.max(-10, Math.min(10, (sp - gps.last.sp) / dt));
+    gps.acc = gps.acc * 0.4 + a * 0.6;
+  }
+  pt.sp = sp; gps.last = pt; gps.sp = sp; gps.fixTime = performance.now() / 1000; gps.ok = true;
+  setStatus('GPS bağlı · doğruluk ±' + Math.round(p.coords.accuracy || 0) + ' m');
+}
+function onPosErr(e){
+  if (e && e.code === 1){
+    setStatus('Konum izni yok. Sayfa Claude içinde açıldıysa konum kapalıdır: dosyayı kendi sitenden ya da tarayıcıdan aç. Demo modu burada da çalışır.', true);
+  } else setStatus('GPS sinyali yok, açık alanda tekrar dene.', true);
+}
+function gpsSpeed(now){
+  if (!gps.ok) return 0;
+  const age = now - gps.fixTime;
+  let pred = gps.sp + gps.acc * Math.min(1.2, age);
+  if (age > 4) pred = gps.sp;
+  pred = Math.max(0, pred);
+  gps.vS += (pred - gps.vS) * 0.15;
+  return gps.vS;
+}
+
+/* ================= ANA DÖNGÜ ================= */
+let lastT = 0;
+const SEG = 44;
+const tach = $('tach');
+for (let i = 0; i < SEG; i++){ const el = document.createElement('i'); if (i >= SEG * .86) el.className = 'r'; else if (i >= SEG * .72) el.className = 'a'; tach.appendChild(el); }
+const segs = [...tach.children];
+
+function tick(){
+  const now = performance.now() / 1000;
+  const dt = lastT ? Math.min(0.1, now - lastT) : 0.033; lastT = now;
+  const p = cur;
+  let vK, loadT;
+
+  if (mode === 'demo'){
+    const vk = demo.v * 3.6; let a;
+    if (st.brake) a = -8;
+    else if (st.gas) a = 7.5 * Math.max(0, 1 - vk / 260) + 0.3;
+    else a = -0.35 - 0.00035 * demo.v * demo.v;
+    demo.v = Math.max(0, Math.min(250 / 3.6, demo.v + a * dt));
+    vK = demo.v * 3.6;
+    loadT = st.gas ? 1 : (vK < 2 ? 0.05 : 0);
+  } else {
+    vK = gpsSpeed(now) * 3.6;
+    const acc = gps.acc;
+    if (acc < -0.4 && vK > 5) loadT = 0;
+    else loadT = Math.min(1, 0.08 + vK / 250 * 0.25 + Math.max(0, acc) * st.sens / 3.2);
+  }
+  st.load += (loadT - st.load) * (loadT > st.load ? 0.35 : 0.25);
+
+  const gb = gearbox(p, vK, st.load, now);
+  const r = gb.rpm / p.redline;
+  const overrun = st.load < 0.06 && r > 0.3 && vK > 8;
+
+  if (ctx && st.running){
+    const t = ctx.currentTime;
+    sendSynth({ params: { rpm: gb.rpm, load: st.load, cut: gb.cut, overrun } });
+    if (p.mode === 'sample'){
+      preGain.gain.setTargetAtTime(0, t, .05);
+      const base = Math.max(300, Number($('baserpm').value) || 3000);
+      if (sampleSrc) sampleSrc.playbackRate.setTargetAtTime(Math.max(.25, Math.min(4, gb.rpm / base)), t, .05);
+      sampleGain.gain.setTargetAtTime(0.35 + 0.65 * st.load, t, .05);
+      lp.frequency.setTargetAtTime(18000, t, .05);
+    } else {
+      preGain.gain.setTargetAtTime(p.gain * (0.9 + 1.5 * st.load), t, .05);
+      lp.frequency.setTargetAtTime(Math.min(18000, p.lp[0] + p.lp[1] * r + p.lp[2] * st.load), t, .05);
+    }
+    // turbo
+    const prevBoost = st.boost;
+    const bT = st.load * Math.min(1, r * 1.4);
+    st.boost += (bT - st.boost) * (bT > st.boost ? 0.05 : 0.2);
+    if (p.turbo > 0){
+      turboOsc.frequency.setTargetAtTime(1800 + st.boost * 5000 + r * 1500, t, .05);
+      turboGain.gain.setTargetAtTime(p.turbo * st.boost * 0.045, t, .05);
+      if (prevBoost > 0.45 && st.load < 0.2 && now > st.bovCool){ blowOff(p.turbo); st.bovCool = now + 1.2; }
+    } else turboGain.gain.setTargetAtTime(0, t, .05);
+  }
+
+  // ekran
+  $('spd').textContent = Math.round(vK);
+  $('gear').textContent = p.mode === 'electric' ? 'E' : String(gb.gear + 1);
+  $('rpm').textContent = Math.round(gb.rpm / 10) * 10 + ' d/dk';
+  const lit = Math.round(r * SEG);
+  for (let i = 0; i < SEG; i++) segs[i].classList.toggle('on', i < lit);
+  $('dash').classList.toggle('shift', r > 0.95 && p.mode !== 'electric');
+}
+setInterval(tick, 33);
+
+/* ================= ARAYÜZ ================= */
+function setStatus(t, err){ const s = $('status'); s.textContent = t; s.classList.toggle('err', !!err); }
+
+function renderGrid(){
+  const g = $('grid'); g.innerHTML = '';
+  PRESETS.forEach(p => {
+    const b = document.createElement('button'); b.className = 'eng' + (p.id === cur.id ? ' sel' : '');
+    b.innerHTML = '<b></b><span></span>'; b.children[0].textContent = p.name; b.children[1].textContent = p.sub;
+    b.onclick = () => selectEngine(p.id); g.appendChild(b);
+  });
+  $('eng-name').textContent = cur.name;
+  $('own').classList.toggle('show', cur.id === 'own');
+}
+function selectEngine(id){
+  cur = PRESETS.find(p => p.id === id) || PRESETS[0];
+  store.set('eng', cur.id); st.gear = 0; renderGrid(); applyPreset();
+}
+
+function setMode(m){
+  mode = m; store.set('mode', m);
+  [...$('modes').children].forEach(b => b.classList.toggle('sel', b.dataset.m === m));
+  $('pad').classList.toggle('hide', m !== 'demo');
+  $('sensrow').classList.toggle('hide', m !== 'gps');
+  if (m === 'gps'){ if (st.running) startGps(); else setStatus('Başlat’a basınca GPS açılır.'); }
+  else { stopGps(); setStatus('GAZ butonuna basılı tut, bırakınca araç yavaşlar.'); }
+  st.gear = 0;
+}
+[...$('modes').children].forEach(b => b.onclick = () => setMode(b.dataset.m));
+
+async function requestWake(){
+  try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch(e){}
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && st.running) requestWake(); });
+
+$('start').onclick = async () => {
+  const b = $('start');
+  if (!st.running){
+    try {
+      if (!ctx) await initAudio(); else await ctx.resume();
+    } catch(e){ setStatus('Ses başlatılamadı: ' + e.message, true); return; }
+    st.running = true; b.textContent = 'SESİ DURDUR'; b.classList.add('on');
+    requestWake();
+    if (mode === 'gps') startGps();
+    if (cur.mode === 'sample') startSample();
+  } else {
+    st.running = false; b.textContent = 'SESİ BAŞLAT'; b.classList.remove('on');
+    stopSample(); stopGps();
+    try { await ctx.suspend(); } catch(e){}
+    try { if (wakeLock) { await wakeLock.release(); wakeLock = null; } } catch(e){}
+  }
+};
+
+function hold(el, key){
+  const on = e => { e.preventDefault(); st[key] = true; el.classList.add('down'); };
+  const off = e => { st[key] = false; el.classList.remove('down'); };
+  el.addEventListener('pointerdown', on); el.addEventListener('pointerup', off);
+  el.addEventListener('pointerleave', off); el.addEventListener('pointercancel', off);
+  el.addEventListener('contextmenu', e => e.preventDefault());
+}
+hold($('gas'), 'gas'); hold($('brk'), 'brake');
+
+$('vol').value = Math.round(st.vol * 100); $('volv').textContent = $('vol').value;
+$('vol').oninput = e => { st.vol = e.target.value / 100; $('volv').textContent = e.target.value; store.set('vol', e.target.value); if (master) master.gain.setTargetAtTime(st.vol, ctx.currentTime, .05); };
+$('sens').value = Math.round(st.sens * 100); $('sensv').textContent = st.sens.toFixed(1);
+$('sens').oninput = e => { st.sens = e.target.value / 100; $('sensv').textContent = st.sens.toFixed(1); store.set('sens', e.target.value); };
+
+$('file').onchange = async e => {
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  $('ownstat').textContent = 'Okunuyor…';
+  ownRaw = await f.arrayBuffer(); ownBuffer = null;
+  if (ctx){ await decodeOwn(); if (cur.mode === 'sample' && st.running) startSample(); }
+  else $('ownstat').textContent = 'Hazır. Başlat’a basınca çalar.';
+};
+
+renderGrid();
+setMode(mode);
+if ('serviceWorker' in navigator && location.protocol === 'https:') { try { navigator.serviceWorker.register('sw.js').catch(() => {}); } catch(e){} }
+</script>
+</body>
+</html>
