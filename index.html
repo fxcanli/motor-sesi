@@ -70,7 +70,7 @@ h2{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);
 </head>
 <body>
 <div class="wrap">
-  <h1>Motor Sesi <small>· elektrikli araç için · v2</small></h1>
+  <h1>Motor Sesi <small>· elektrikli araç için · v2.1</small></h1>
 
   <div class="dash" id="dash">
     <div class="top">
@@ -101,6 +101,7 @@ h2{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);
   <div class="sensor" id="sensor">
     <div class="gm"><div class="gmc"></div><div class="gmf" id="gmf"></div></div>
     <div class="srow"><span id="sstat">Sensör: Başlat ile açılır</span><b id="gval">0.00 g</b></div>
+    <div class="srow"><span>Ses çıkış gecikmesi</span><b id="lat">—</b></div>
     <button class="cal" id="cal">Yönü ayarla</button>
     <div class="hint">Telefonu tutucuya sabitle. Düz yolda “Yönü ayarla”ya bas, sonra 2–3 saniye seri hızlan. Ayarlamazsan uygulama birkaç hızlanma ve frenden sonra yönü kendisi öğrenir. Telefonun yerini değiştirirsen yeniden ayarla.</div>
   </div>
@@ -174,8 +175,8 @@ class EngineSynth {
     if (!this.preset){ for (let j = 0; j < n; j++) out[j] = 0; return; }
     const sr = this.sr, T = 6.283185307179586;
     for (let j = 0; j < n; j++){
-      this.rpm += (this.rpmT - this.rpm) * 0.0012;
-      this.load += (this.loadT - this.load) * 0.0008;
+      this.rpm += (this.rpmT - this.rpm) * 0.0016;
+      this.load += (this.loadT - this.load) * 0.002;
       const rpm = this.rpm; let s = 0;
       if (this.mode === 'electric'){
         const f = 40 + rpm * 0.06;
@@ -387,20 +388,23 @@ function blowOff(amount){
 /* ================= SANAL VİTES KUTUSU ================= */
 function gearbox(p, vK, load, now){
   const g = p.gears, rl = p.redline, idle = p.idle;
-  const rin = gi => vK / g[gi] * rl;
+  const slip = gi => 1 + load * (gi < 2 ? 0.3 : 0.18) * Math.max(0, 1 - vK / 160);
+  const rin = gi => vK / g[gi] * rl * slip(gi);
   if (st.gear > g.length - 1) st.gear = g.length - 1;
+  const up = rl * (0.38 + 0.57 * Math.pow(load, 1.3));
+  // kickdown: gaza basınca hemen 1-2 vites düş (beklemeden)
+  if (now - st.lastShift > 0.2 && load > 0.45){
+    let n = 0;
+    while (st.gear > 0 && n < 2 && rin(st.gear - 1) < up * 0.95 && rin(st.gear) < up * 0.65){ st.gear--; n++; }
+    if (n){ st.lastShift = now; st.kickAt = now; }
+  }
   if (now - st.lastShift > 0.5){
-    const up = rl * (0.38 + 0.57 * Math.pow(load, 1.3));
     if (st.gear < g.length - 1 && rin(st.gear) > up && rin(st.gear + 1) > idle * 1.1){
       st.gear++; st.lastShift = now; if (load > 0.5) st.cutUntil = now + 0.11;
-    } else if (st.gear > 0){
-      const down = Math.max(idle * 1.25, up * 0.5);
-      const kick = load > 0.85 && rin(st.gear - 1) < rl * 0.85 && rin(st.gear) < rl * 0.6;
-      if (rin(st.gear) < down || kick){ st.gear--; st.lastShift = now; }
-    }
+    } else if (st.gear > 0 && rin(st.gear) < Math.max(idle * 1.25, up * 0.5)){ st.gear--; st.lastShift = now; }
   }
-  let rpm = rin(st.gear);
-  if (st.gear === 0) rpm = Math.max(rpm, idle + load * 0.35 * rl * Math.max(0, 1 - vK / 25));
+  let rpm = rin(st.gear); // tork konvertörü kayması dahil
+  if (st.gear === 0) rpm = Math.max(rpm, idle + load * 0.35 * rl * Math.max(0, 1 - vK / 25)); // kalkış
   rpm = Math.max(rpm, idle);
   let cut = now < st.cutUntil;
   if (rpm >= rl * 0.995){ rpm = rl; if (Math.floor(now * 22) % 2 === 0) cut = true; }
@@ -493,7 +497,7 @@ function onMotion(e){
   const gh = V.norm(mo.g);
   const lin = hasLa ? laV : V.sub(igv, mo.g);
   const ah = horiz(lin, gh);
-  const ka = 1 - Math.exp(-dt / 0.12);
+  const ka = 1 - Math.exp(-dt / 0.06);
   for (let i = 0; i < 3; i++){ mo.ah[i] += (ah[i] - mo.ah[i]) * ka; mo.winSum[i] += mo.ah[i]; }
   mo.winN++;
 
@@ -594,7 +598,7 @@ function tick(){
     if (acc < -0.4 && vK > 5) loadT = 0;
     else loadT = Math.min(1, 0.08 + vK / 250 * 0.25 + Math.max(0, acc) * st.sens / 3.2);
   }
-  st.load += (loadT - st.load) * (loadT > st.load ? 0.35 : 0.25);
+  st.load += (loadT - st.load) * (loadT > st.load ? 0.6 : 0.4);
 
   const gb = gearbox(p, vK, st.load, now);
   const r = gb.rpm / p.redline;
@@ -604,24 +608,24 @@ function tick(){
     const t = ctx.currentTime;
     sendSynth({ params: { rpm: gb.rpm, load: st.load, cut: gb.cut, overrun } });
     if (p.mode === 'sample'){
-      preGain.gain.setTargetAtTime(0, t, .05);
+      preGain.gain.setTargetAtTime(0, t, .025);
       const base = Math.max(300, Number($('baserpm').value) || 3000);
-      if (sampleSrc) sampleSrc.playbackRate.setTargetAtTime(Math.max(.25, Math.min(4, gb.rpm / base)), t, .05);
-      sampleGain.gain.setTargetAtTime(0.35 + 0.65 * st.load, t, .05);
-      lp.frequency.setTargetAtTime(18000, t, .05);
+      if (sampleSrc) sampleSrc.playbackRate.setTargetAtTime(Math.max(.25, Math.min(4, gb.rpm / base)), t, .025);
+      sampleGain.gain.setTargetAtTime(0.35 + 0.65 * st.load, t, .025);
+      lp.frequency.setTargetAtTime(18000, t, .025);
     } else {
-      preGain.gain.setTargetAtTime(p.gain * (0.9 + 1.5 * st.load), t, .05);
-      lp.frequency.setTargetAtTime(Math.min(18000, p.lp[0] + p.lp[1] * r + p.lp[2] * st.load), t, .05);
+      preGain.gain.setTargetAtTime(p.gain * (0.9 + 1.5 * st.load), t, .025);
+      lp.frequency.setTargetAtTime(Math.min(18000, p.lp[0] + p.lp[1] * r + p.lp[2] * st.load), t, .025);
     }
     // turbo
     const prevBoost = st.boost;
     const bT = st.load * Math.min(1, r * 1.4);
     st.boost += (bT - st.boost) * (bT > st.boost ? 0.05 : 0.2);
     if (p.turbo > 0){
-      turboOsc.frequency.setTargetAtTime(1800 + st.boost * 5000 + r * 1500, t, .05);
-      turboGain.gain.setTargetAtTime(p.turbo * st.boost * 0.045, t, .05);
+      turboOsc.frequency.setTargetAtTime(1800 + st.boost * 5000 + r * 1500, t, .025);
+      turboGain.gain.setTargetAtTime(p.turbo * st.boost * 0.045, t, .025);
       if (prevBoost > 0.45 && st.load < 0.2 && now > st.bovCool){ blowOff(p.turbo); st.bovCool = now + 1.2; }
-    } else turboGain.gain.setTargetAtTime(0, t, .05);
+    } else turboGain.gain.setTargetAtTime(0, t, .025);
   }
 
   // ekran
@@ -630,6 +634,10 @@ function tick(){
     const gm = $('gmf'); gm.style.width = w + '%'; gm.style.left = (st.acc >= 0 ? 50 : 50 - w) + '%'; gm.classList.toggle('neg', st.acc < 0);
     $('gval').textContent = Math.abs(ga) < 0.005 ? '0.00 g' : (ga > 0 ? '+' : '') + ga.toFixed(2) + ' g';
     $('sstat').textContent = sensorText();
+    if (ctx && st.running){
+      const L = ((ctx.baseLatency || 0) + (ctx.outputLatency || 0)) * 1000;
+      $('lat').textContent = L > 0 ? Math.round(L) + ' ms' : 'ölçülemiyor';
+    }
   }
   $('spd').textContent = Math.round(vK);
   $('gear').textContent = p.mode === 'electric' ? 'E' : String(gb.gear + 1);
@@ -638,7 +646,7 @@ function tick(){
   for (let i = 0; i < SEG; i++) segs[i].classList.toggle('on', i < lit);
   $('dash').classList.toggle('shift', r > 0.95 && p.mode !== 'electric');
 }
-setInterval(tick, 33);
+setInterval(tick, 20);
 
 /* ================= ARAYÜZ ================= */
 function setStatus(t, err){ const s = $('status'); s.textContent = t; s.classList.toggle('err', !!err); }
